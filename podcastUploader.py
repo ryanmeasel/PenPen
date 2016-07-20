@@ -2,17 +2,16 @@
 """Convert, tag, and upload podcast episodes."""
 # to do
 # - configuration files
-# - allow the title and description to be set from the command line
 # for public release
 # - make it compatible with mp3s
 # - check for existence of LAME
 
-
+import argparse
 import datetime
+import mutagen.id3
 import os
 import sys
 import re
-import mutagen.id3
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC
 from mutagen.mp3 import MP3
@@ -56,38 +55,53 @@ def containsInvalidXmlTextChars(xmlString):
         return True     # string contains an invalid character
 
 
-def parseArgs():
-    """Parse the command line arguments and return the filename."""
-    # Check for the appropriate number of arguments
-    if len(sys.argv) != 2:
-        print ansiColor.YELLOW + "Usage: " + sys.argv[0] + " <WAV>", \
-            ansiColor.NOCOLOR
-        exit()
-    # Check that the supplied file exists
-    filename = sys.argv[1]
+def checkFileExists(filename, ext):
+    """Check that the file exists and has the specified extension."""
     if not os.path.isfile(filename):
         throwFatalError("\"" + filename + "\" is not a file.")
-    # Check that it is a WAV
-    fileroot, fileExtension = os.path.splitext(filename)
-    if fileExtension.lower() != ".wav":
-        throwFatalError("\"" + filename + "\" is not a WAV.")
-    log("Processing \'" + fileroot + "\'...")
-    return fileroot
+    _, fileExtension = os.path.splitext(filename)
+    if fileExtension.lower() != ext.lower():
+        throwFatalError("\"" + filename + "\" is not a \'" + ext + "\'.")
 
 
-def promptUserInput():
-    """Get input from the user for the title and the description."""
-    # Get the title
-    title = unicode(raw_input(ansiColor.BLUE + "Enter a title: " +
-                              ansiColor.NOCOLOR))
+def parseArgs():
+    """Parse the command line arguments."""
+    parser = argparse.ArgumentParser(description='Transcode, tag, and upload \
+                                     podcast episodes.')
+    parser.add_argument('-c', '--config', required=True,
+                        help='Configuration file with the feed parameters.')
+    parser.add_argument('-t', '--title', type=str, required=False,
+                        help='Title of the episode.')
+    parser.add_argument('-d', '--description', type=str, required=False,
+                        help='Description of the episode.')
+    parser.add_argument('audioFile', help='WAV or MP3 file to be added to the \
+                        feed. WAV files will be transcoded to 128 Kbps MP3s.')
+    # Returns a dictionary of the parsed arguments
+    args = parser.parse_args()
+    # Check that the config file is valid
+    checkFileExists(args.config, '.conf')
+    # Check that the wav file is valid
+    checkFileExists(args.wavFile, '.WAV')
+    # Return the args
+    log("Processing \'" + args.wavFile + "\'...")
+    return args
+
+
+def processTitleAndDesc(title, desc):
+    """Acquite and validate the title and description of the episode."""
+    # Get the title if it wasn't passed in on the command line.
+    if not title:
+        title = unicode(raw_input(ansiColor.BLUE + "Enter a title: " +
+                                  ansiColor.NOCOLOR))
     if not title:
         throwFatalError("A title must be supplied.")
     if containsInvalidXmlTextChars(title):
         throwFatalError("\'Title\' may only contain valid XML" +
                         "characters (e.g., not '<' and '&').")
-    # Get the description
-    desc = unicode(raw_input(ansiColor.BLUE + "Enter a description: " +
-                             ansiColor.NOCOLOR))
+    # Get the description if it wasn't passed in on the command line.
+    if not desc:
+        desc = unicode(raw_input(ansiColor.BLUE + "Enter a description: " +
+                                 ansiColor.NOCOLOR))
     if not desc:
         throwFatalError("A description must be supplied.")
     if containsInvalidXmlTextChars(desc):
@@ -96,10 +110,11 @@ def promptUserInput():
     return title, desc
 
 
-def transcodeAudio(fileroot):
+def transcodeAudio(filename):
     """Convert the WAV to an MP3 using Lame."""
     log("Transcoding to MP3...")
     # Check if the mp3 already exists
+    fileroot, _ = os.path.splitext(filename)
     if os.path.isfile(fileroot + ".mp3"):
         throwFatalError("\'" + fileroot + ".mp3\' already exists.")
     # Transcode the mp3
@@ -232,9 +247,9 @@ def addEntryToXml(filename, title, desc):
 
 def main():
     """Main function."""
-    fileroot = parseArgs()
-    title, desc = promptUserInput()
-    mp3Filename = transcodeAudio(fileroot)
+    args = parseArgs()
+    title, desc = processTitleAndDesc(args.title, args.description)
+    mp3Filename = transcodeAudio(args.wavFile)
     addTags(mp3Filename, title, desc)
     addEntryToXml(mp3Filename, title, desc)
     print ansiColor.GREEN + "++ Done. " + u'\u2714' + ansiColor.NOCOLOR

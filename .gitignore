@@ -4,6 +4,7 @@
 *.xml
 *.png
 *.jpg
+*.conf
 
 
 ### OSX ###
