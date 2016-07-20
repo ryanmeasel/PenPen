@@ -2,9 +2,6 @@
 """Convert, tag, and upload podcast episodes."""
 # to do
 # - configuration files
-# for public release
-# - make it compatible with mp3s
-# - check for existence of LAME
 
 import argparse
 import datetime
@@ -55,13 +52,21 @@ def containsInvalidXmlTextChars(xmlString):
         return True     # string contains an invalid character
 
 
-def checkFileExists(filename, ext):
-    """Check that the file exists and has the specified extension."""
-    if not os.path.isfile(filename):
-        throwFatalError("\"" + filename + "\" is not a file.")
+def fileExists(filename):
+    """Check that the file exists."""
+    if os.path.isfile(filename):
+        return True
+    else:
+        return False
+
+
+def extensionValid(filename, ext):
+    """Check that the file has the specified extension."""
     _, fileExtension = os.path.splitext(filename)
-    if fileExtension.lower() != ext.lower():
-        throwFatalError("\"" + filename + "\" is not a \'" + ext + "\'.")
+    if fileExtension.lower() == ext.lower():
+        return True
+    else:
+        return False
 
 
 def parseArgs():
@@ -76,15 +81,8 @@ def parseArgs():
                         help='Description of the episode.')
     parser.add_argument('audioFile', help='WAV or MP3 file to be added to the \
                         feed. WAV files will be transcoded to 128 Kbps MP3s.')
-    # Returns a dictionary of the parsed arguments
-    args = parser.parse_args()
-    # Check that the config file is valid
-    checkFileExists(args.config, '.conf')
-    # Check that the wav file is valid
-    checkFileExists(args.wavFile, '.WAV')
-    # Return the args
-    log("Processing \'" + args.wavFile + "\'...")
-    return args
+    # Returns a namespace containing the parsed arguments
+    return parser.parse_args()
 
 
 def processTitleAndDesc(title, desc):
@@ -98,6 +96,7 @@ def processTitleAndDesc(title, desc):
     if containsInvalidXmlTextChars(title):
         throwFatalError("\'Title\' may only contain valid XML" +
                         "characters (e.g., not '<' and '&').")
+    log("Title is valid.")
     # Get the description if it wasn't passed in on the command line.
     if not desc:
         desc = unicode(raw_input(ansiColor.BLUE + "Enter a description: " +
@@ -107,7 +106,24 @@ def processTitleAndDesc(title, desc):
     if containsInvalidXmlTextChars(desc):
         throwFatalError("\'Description\' may only contain valid XML" +
                         "characters (e.g., not '<' and '&').")
+    log("Description is valid.")
     return title, desc
+
+
+def processAudio(filename):
+    """Validate the audio file and transcode if necessary."""
+    # Check that the file exists
+    if not fileExists(filename):
+        throwFatalError("\'" + filename + "\' does not exist.")
+    # Check that the file is either a WAV or an MP3
+    if not extensionValid(filename, '.WAV') and \
+       not extensionValid(filename, '.MP3'):
+        throwFatalError("The audio file must be a WAV or MP3.")
+    # If it's a WAV, then transcode it to MP3
+    if extensionValid(filename, '.WAV'):
+        return transcodeAudio(filename)
+    else:
+        return filename
 
 
 def transcodeAudio(filename):
@@ -248,8 +264,9 @@ def addEntryToXml(filename, title, desc):
 def main():
     """Main function."""
     args = parseArgs()
+    # config = parseConfigFile(args.config)
     title, desc = processTitleAndDesc(args.title, args.description)
-    mp3Filename = transcodeAudio(args.wavFile)
+    mp3Filename = processAudio(args.audioFile)
     addTags(mp3Filename, title, desc)
     addEntryToXml(mp3Filename, title, desc)
     print ansiColor.GREEN + "++ Done. " + u'\u2714' + ansiColor.NOCOLOR
