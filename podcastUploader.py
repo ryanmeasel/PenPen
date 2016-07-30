@@ -6,12 +6,17 @@
 
 import argparse
 import datetime
+import logging
 import mutagen.id3
 import os
 import re
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC
 from mutagen.mp3 import MP3
+
+# Configure logger globally
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class ansiColor:
@@ -25,22 +30,6 @@ class ansiColor:
     NOCOLOR = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-
-
-def throwFatalError(errorMessage):
-    """Convenience function to throw error messages and exit the program."""
-    print ansiColor.RED + "**ERROR**: " + errorMessage + ansiColor.NOCOLOR
-    exit()
-
-
-def throwWarning(warnMessage):
-    """Convenience function to print warning messages."""
-    print ansiColor.YELLOW + "**WARNING**: " + warnMessage + ansiColor.NOCOLOR
-
-
-def log(logMessage):
-    """Convenience function for printing log messages to the console."""
-    print ansiColor.PURPLE + "++ " + logMessage + ansiColor.NOCOLOR
 
 
 def containsInvalidXmlTextChars(xmlString):
@@ -101,24 +90,28 @@ def processTitleAndDesc(title, desc):
 
         # Check that something was entered, enforcing a non-empty title
         if not title:
-            throwFatalError("A title must be supplied.")
+            logging.fatal("A title must be supplied.")
+            exit(1)
 
     if containsInvalidXmlTextChars(title):
-        throwFatalError("\'Title\' may only contain valid XML" +
-                        "characters (e.g., not '<' and '&').")
-    log("Title is valid.")
+        logger.fatal("\'Title\' may only contain valid XML" +
+                     "characters (e.g., not '<' and '&').")
+        exit(1)
+    logger.info("Title is valid.")
 
     # Get the description if it wasn't passed in on the command line.
     if not desc:
         desc = unicode(raw_input(ansiColor.BLUE + "Enter a description: " +
                                  ansiColor.NOCOLOR))
         if not desc:
-            throwFatalError("A description must be supplied.")
+            logger.fatal("A description must be supplied.")
+            exit(1)
 
     if containsInvalidXmlTextChars(desc):
-        throwFatalError("\'Description\' may only contain valid XML" +
-                        "characters (e.g., not '<' and '&').")
-    log("Description is valid.")
+        logger.fatal("\'Description\' may only contain valid XML" +
+                     "characters (e.g., not '<' and '&').")
+        exit(1)
+    logger.info("Description is valid.")
 
     return title, desc
 
@@ -127,12 +120,14 @@ def processAudio(filename):
     """Validate the audio file and transcode if necessary."""
     # Check that the file exists
     if not fileExists(filename):
-        throwFatalError("\'" + filename + "\' does not exist.")
+        logger.fatal("\'" + filename + "\' does not exist.")
+        exit(1)
 
     # Check that the file is either a WAV or an MP3
     if not extensionValid(filename, '.WAV') and \
        not extensionValid(filename, '.MP3'):
-        throwFatalError("The audio file must be a WAV or MP3.")
+        logger.fatal("The audio file must be a WAV or MP3.")
+        exit(1)
 
     # If it's a WAV, then transcode it to MP3
     if extensionValid(filename, '.WAV'):
@@ -143,11 +138,12 @@ def processAudio(filename):
 
 def transcodeAudio(filename):
     """Convert the WAV to an MP3 using Lame."""
-    log("Transcoding to MP3...")
+    logging.info("Transcoding to MP3...")
     # Check if the mp3 already exists
     fileroot, _ = os.path.splitext(filename)
     if fileExists(fileroot + ".mp3"):
-        throwFatalError("\'" + fileroot + ".mp3\' already exists.")
+        logger.fatal("\'" + fileroot + ".mp3\' already exists.")
+        exit(1)
 
     # Transcode the mp3
     try:
@@ -159,7 +155,7 @@ def transcodeAudio(filename):
 
 def addTags(config, filename, title, desc):
     """Add ID3 tags and cover image to the mp3."""
-    log("Adding ID3 tags...")
+    logger.info("Adding ID3 tags...")
 
     # Use EasyID3 to apply text tags since it's less complicated than ID3.
     # Sadly, EasyID3 can not handle album art so we'll do that separate.
@@ -177,7 +173,7 @@ def addTags(config, filename, title, desc):
     meta.save()
 
     # Create the image tag
-    log("Adding the Cover Image...")
+    logger.info("Adding the Cover Image...")
     imageFilepath = config["imageFilepath"]
     _, imageFileExtension = os.path.splitext(imageFilepath)
     imageTag = APIC()
@@ -188,7 +184,8 @@ def addTags(config, filename, title, desc):
     elif imageFileExtension.lower() == ".jpg":
         imageTag.mime = 'image/jpeg'
     else:
-        throwFatalError("Cover image must be a PNG or JPG.")
+        logger.fatal("Cover image must be a PNG or JPG.")
+        exit(1)
 
     # Set the image tags
     imageTag.encoding = 3  # 3 is for utf-8
@@ -208,7 +205,7 @@ def addTags(config, filename, title, desc):
 
 def addEntryToXml(config, filename, title, desc):
     """Add an entry into the XML for this episode."""
-    log("Adding entry to the XML file...")
+    logger.info("Adding entry to the XML file...")
 
     # Get the date in UTC
     utcnow = datetime.datetime.utcnow()
@@ -224,10 +221,13 @@ def addEntryToXml(config, filename, title, desc):
     # Create the backup file by copying the XML file into the backup directory
     xmlFilepath = config["xmlFilepath"]
     if not os.path.isfile(xmlFilepath):
-        throwFatalError("\'" + xmlFilepath + "\' is not a file.")
+        logger.fatal("\'" + xmlFilepath + "\' is not a file.")
+        exit(1)
     try:
-        os.system("cp %s %s/%s_%s.xml" % (xmlFilepath, backupDir,
-                  xmlFilepath[:-4], utcnow.strftime("%Y%m%d-%H%M%S")))
+        os.system("cp %s %s/%s_%s.xml" % (xmlFilepath,
+                                          backupDir,
+                                          xmlFilepath[:-4],
+                                          utcnow.strftime("%Y%m%d-%H%M%S")))
     except OSError:
         raise
 
@@ -292,7 +292,8 @@ def parseConfigFile(configFile):
     """Parse the configuration file."""
     # Read in the config file
     if not fileExists(configFile):
-        throwFatalError("\'" + configFile + "\' does not exist.")
+        logger.fatal("\'" + configFile + "\' does not exist.")
+        exit(1)
     with open(configFile) as f:
         contents = f.readlines()
 
@@ -309,7 +310,7 @@ def parseConfigFile(configFile):
             continue
         fields = line.split('=', 1)
         if len(fields) < 2:
-            throwWarning("\'" + fields[0] + "\' has not been specified.")
+            logger.warning("\'" + fields[0] + "\' has not been specified.")
 
         # Assign the key value pair and strip whitespace
         key = fields[0].lstrip().rstrip()
@@ -317,7 +318,7 @@ def parseConfigFile(configFile):
 
         # Strip doubles quotes from the value if it has it
         if value.startswith('"') and value.endswith('"'):
-                value = value[1:-1]
+            value = value[1:-1]
         config[key] = value
     return config
 
