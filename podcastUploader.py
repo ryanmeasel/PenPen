@@ -2,17 +2,14 @@
 """Convert, tag, and upload podcast episodes."""
 # to do
 # - configuration files
+# - cp the backup back to the original if the write fails
 # - dynamically generate the feed header everytime
 
 import argparse
-import datetime
 import logging
-import mutagen.id3
-import os
-import re
-from mutagen.easyid3 import EasyID3
-from mutagen.id3 import ID3, APIC
-from mutagen.mp3 import MP3
+
+import audio
+import xml
 
 # Configure logger globally
 logging.basicConfig(level=logging.DEBUG)
@@ -30,37 +27,6 @@ class ansiColor:
     NOCOLOR = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-
-
-def containsInvalidXmlTextChars(xmlString):
-    """Check the string for invalid XML characters.
-
-    This is not intended to validate the XML. It's only meant catch characters
-    in the text (i.e., '<' and '&').
-    """
-    illegalXmlCharsRE = re.compile("[<&]")
-    match = illegalXmlCharsRE.search(xmlString)
-    if not match:
-        return False    # no invalid characters found
-    else:
-        return True     # string contains an invalid character
-
-
-def fileExists(filename):
-    """Check that the file exists."""
-    if os.path.isfile(filename):
-        return True
-    else:
-        return False
-
-
-def extensionValid(filename, ext):
-    """Check that the file has the specified extension."""
-    _, fileExtension = os.path.splitext(filename)
-    if fileExtension.lower() == ext.lower():
-        return True
-    else:
-        return False
 
 
 def parseArgs():
@@ -81,257 +47,38 @@ def parseArgs():
     return parser.parse_args()
 
 
-def processTitleAndDesc(title, desc):
-    """Acquite and validate the title and description of the episode."""
+def validateTextField(field, fieldName):
+    """Validate a text field. Prompt if empty."""
     # Get the title if it wasn't passed in on the command line.
-    if not title:
-        title = unicode(raw_input(ansiColor.BLUE + "Enter a title: " +
+    if not field:
+        field = unicode(raw_input(ansiColor.BLUE +
+                                  "Enter the " +
+                                  fieldName.lower() +
+                                  ": " +
                                   ansiColor.NOCOLOR))
 
         # Check that something was entered, enforcing a non-empty title
-        if not title:
-            logging.fatal("A title must be supplied.")
+        if not field:
+            logging.fatal("\'" + fieldName + "\' must be supplied.")
             exit(1)
 
-    if containsInvalidXmlTextChars(title):
-        logger.fatal("\'Title\' may only contain valid XML" +
+    if xml.containsInvalidTextChars(field):
+        logger.fatal("\'" + fieldName + "\' may only contain valid XML" +
                      "characters (e.g., not '<' and '&').")
         exit(1)
-    logger.info("Title is valid.")
 
-    # Get the description if it wasn't passed in on the command line.
-    if not desc:
-        desc = unicode(raw_input(ansiColor.BLUE + "Enter a description: " +
-                                 ansiColor.NOCOLOR))
-        if not desc:
-            logger.fatal("A description must be supplied.")
-            exit(1)
-
-    if containsInvalidXmlTextChars(desc):
-        logger.fatal("\'Description\' may only contain valid XML" +
-                     "characters (e.g., not '<' and '&').")
-        exit(1)
-    logger.info("Description is valid.")
-
-    return title, desc
-
-
-def processAudio(filename):
-    """Validate the audio file and transcode if necessary."""
-    # Check that the file exists
-    if not fileExists(filename):
-        logger.fatal("\'" + filename + "\' does not exist.")
-        exit(1)
-
-    # Check that the file is either a WAV or an MP3
-    if not extensionValid(filename, '.WAV') and \
-       not extensionValid(filename, '.MP3'):
-        logger.fatal("The audio file must be a WAV or MP3.")
-        exit(1)
-
-    # If it's a WAV, then transcode it to MP3
-    if extensionValid(filename, '.WAV'):
-        return transcodeAudio(filename)
-    else:
-        return filename
-
-
-def transcodeAudio(filename):
-    """Convert the WAV to an MP3 using Lame."""
-    logging.info("Transcoding to MP3...")
-    # Check if the mp3 already exists
-    fileroot, _ = os.path.splitext(filename)
-    if fileExists(fileroot + ".mp3"):
-        logger.fatal("\'" + fileroot + ".mp3\' already exists.")
-        exit(1)
-
-    # Transcode the mp3
-    try:
-        os.system("lame -V2 -h  --quiet %s.wav %s.mp3" % (fileroot, fileroot))
-    except OSError:
-        raise
-    return fileroot + ".mp3"
-
-
-def addTags(config, filename, title, desc):
-    """Add ID3 tags and cover image to the mp3."""
-    logger.info("Adding ID3 tags...")
-
-    # Use EasyID3 to apply text tags since it's less complicated than ID3.
-    # Sadly, EasyID3 can not handle album art so we'll do that separate.
-    try:
-        meta = EasyID3(filename)
-    except mutagen.id3.ID3NoHeaderError:
-        meta = MP3(filename, ID3=EasyID3)
-        meta.add_tags()
-
-    # Set tags
-    meta["title"] = title
-    meta["artist"] = unicode(config["artist"])
-    meta["date"] = unicode(str(datetime.datetime.now().year))
-    meta["album"] = unicode(config["album"])
-    meta.save()
-
-    # Create the image tag
-    logger.info("Adding the Cover Image...")
-    imageFilepath = config["imageFilepath"]
-    _, imageFileExtension = os.path.splitext(imageFilepath)
-    imageTag = APIC()
-
-    # Determine the file type
-    if imageFileExtension.lower() == ".png":
-        imageTag.mime = 'image/png'
-    elif imageFileExtension.lower() == ".jpg":
-        imageTag.mime = 'image/jpeg'
-    else:
-        logger.fatal("Cover image must be a PNG or JPG.")
-        exit(1)
-
-    # Set the image tags
-    imageTag.encoding = 3  # 3 is for utf-8
-    imageTag.type = 3      # 3 is for cover image
-    imageTag.desc = u'Cover'
-    with open(imageFilepath, 'rb') as f:
-        imageTag.data = f.read()
-
-    # Add the tag using ID3
-    try:
-        audio = MP3(filename, ID3=ID3)
-        audio.tags.add(imageTag)
-        audio.save()
-    except:
-        raise
-
-
-def addEntryToXml(config, filename, title, desc):
-    """Add an entry into the XML for this episode."""
-    logger.info("Adding entry to the XML file...")
-
-    # Get the date in UTC
-    utcnow = datetime.datetime.utcnow()
-
-    # Create the XML backup directory if it doesn't already exist
-    backupDir = config["xmlBackupDir"]
-    try:
-        os.makedirs(backupDir)
-    except OSError:
-        if not os.path.isdir(backupDir):
-            raise
-
-    # Create the backup file by copying the XML file into the backup directory
-    xmlFilepath = config["xmlFilepath"]
-    if not os.path.isfile(xmlFilepath):
-        logger.fatal("\'" + xmlFilepath + "\' is not a file.")
-        exit(1)
-    try:
-        os.system("cp %s %s/%s_%s.xml" % (xmlFilepath,
-                                          backupDir,
-                                          xmlFilepath[:-4],
-                                          utcnow.strftime("%Y%m%d-%H%M%S")))
-    except OSError:
-        raise
-
-    # Read all the lines from the backup which will be written into the new
-    # file along with the new entry
-    with open(xmlFilepath, 'r') as f:
-        lines = f.readlines()
-
-    # Calculate the length of the episode in hours, minutes, and seconds
-    try:
-        audioFile = MP3(filename)
-        hours, rem = divmod(audioFile.info.length, 3600)
-        mins, secs = divmod(rem, 60)
-    except:
-        raise
-
-    # Open the XML file for writing
-    with open(xmlFilepath, 'w') as f:
-        # Write the header
-        for i in range(32):
-            f.write(lines[i])
-        f.write("<lastBuildDate>" + utcnow.strftime("%a, %d %b %Y %H:%M:%S") +
-                "</lastBuildDate>\n")
-
-        # Write the new entry
-        f.write("<item>\n")
-        f.write(" <title>" + title + "</title>\n")
-        f.write(" <link>" + config["link"] + "</link>\n")
-        f.write(" <itunes:author>" + config["itunesAuthor"] +
-                "</itunes:author>\n")
-        f.write(" <dc:creator>" + config["dcCreator"] + "</dc:creator>\n")
-        f.write(" <description>" + desc + "</description>\n")
-        f.write(" <content:encoded>" + desc + "</content:encoded>\n")
-        f.write(" <pubDate>" + utcnow.strftime("%a, %d %b %Y %H:%M:%S") +
-                " UTC</pubDate>\n")
-        f.write(" <itunes:summary>" + desc + "</itunes:summary>\n")
-        f.write(" <itunes:keywords>" + config["itunesKeywords"] +
-                "</itunes:keywords>\n")
-        f.write(" <itunes:duration>%02d:%02d:%02d</itunes:duration>\n"
-                % (hours, mins, secs))
-        f.write(" <category>" + config["category"] + "</category>\n")
-
-        # The "webFolder" must end in a slash
-        webFolder = config["webFolder"]
-        if not webFolder.endswith('/'):
-            webFolder += "/"
-        f.write(" <enclosure url=\"" + webFolder +
-                filename + "\" length=\"" +
-                str(os.path.getsize(filename)) +
-                "\" type=\"audio/mpeg3\" />\n")
-        f.write(" <guid>" + webFolder + filename + "</guid>\n")
-        f.write(" <itunes:explicit>" + config["itunesExplicit"] +
-                "</itunes:explicit>\n")
-        f.write("</item>\n")
-
-        # Write the remainder of the file
-        for i in range(33, len(lines)):
-            f.write(lines[i])
-
-
-def parseConfigFile(configFile):
-    """Parse the configuration file."""
-    # Read in the config file
-    if not fileExists(configFile):
-        logger.fatal("\'" + configFile + "\' does not exist.")
-        exit(1)
-    with open(configFile) as f:
-        contents = f.readlines()
-
-    # Load the contents into a dictionary
-    config = dict()
-    for line in contents:
-        # Each line should have a single parameter delimited by "=".
-        # Skip if the line is only whitespace.
-        if line.isspace():
-            continue
-
-        # Skip if the line if it is a comment (starts with "#")
-        if line[0] == "#":
-            continue
-        fields = line.split('=', 1)
-        if len(fields) < 2:
-            logger.warning("\'" + fields[0] + "\' has not been specified.")
-
-        # Assign the key value pair and strip whitespace
-        key = fields[0].lstrip().rstrip()
-        value = fields[1].lstrip().rstrip()
-
-        # Strip doubles quotes from the value if it has it
-        if value.startswith('"') and value.endswith('"'):
-            value = value[1:-1]
-        config[key] = value
-    return config
+    return field
 
 
 def main():
     """Main function."""
     args = parseArgs()
-    config = parseConfigFile(args.config)
-    title, desc = processTitleAndDesc(args.title, args.description)
-    mp3Filename = processAudio(args.audioFile)
-    addTags(config, mp3Filename, title, desc)
-    addEntryToXml(config, mp3Filename, title, desc)
-    print ansiColor.GREEN + "++ Done. " + u'\u2714' + ansiColor.NOCOLOR
+    config = xml.parseConfigFile(args.config)
+    title = validateTextField(args.title, "Title")
+    desc = validateTextField(args.description, "Description")
+    filename, length = audio.process(args.audioFile, config, title, desc)
+    xml.addItem(filename, config, title, desc, length)
+    logger.info(ansiColor.GREEN + "++ Done. " + u'\u2714' + ansiColor.NOCOLOR)
 
 
 if __name__ == "__main__":
