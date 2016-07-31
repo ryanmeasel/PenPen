@@ -1,4 +1,4 @@
-#!/usr/local/bin/python
+#!/usr/bin/env python
 """Utility functions for inspecting files."""
 
 import logging

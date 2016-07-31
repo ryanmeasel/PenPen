@@ -1,4 +1,4 @@
-#!/usr/local/bin/python
+#!/usr/bin/env python
 """Convert, tag, and upload podcast episodes."""
 # to do
 # - configuration files

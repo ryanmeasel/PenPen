@@ -1,10 +1,11 @@
-#!/usr/local/bin/python
+#!/usr/bin/env python
 """Tag and transcode audio files."""
 
 # Standard modules
 import datetime
 import logging
 import os
+import subprocess
 
 # Third party modules
 import mutagen.id3
@@ -50,6 +51,7 @@ def process(filename, config, title, desc):
 def transcodeAudio(filename):
     """Convert the WAV to an MP3 using Lame."""
     logging.info("Transcoding to MP3...")
+
     # Check if the mp3 already exists
     fileroot, _ = os.path.splitext(filename)
     if fileUtils.exists(fileroot + ".mp3"):
@@ -58,9 +60,12 @@ def transcodeAudio(filename):
 
     # Transcode the mp3
     try:
-        os.system("lame -V2 -h  --quiet %s.wav %s.mp3" % (fileroot, fileroot))
-    except OSError:
+        cmd = "lame -V2 -h  --quiet %s.wav %s.mp3" % (fileroot, fileroot)
+        subprocess.call(cmd, shell=False)
+    except:
         raise
+
+    # Return the filename of the transcoded file.
     return fileroot + ".mp3"
 
 
