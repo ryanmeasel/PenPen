@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 
+
 # Third party modules
 import mutagen.id3
 from mutagen.easyid3 import EasyID3
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 def process(filename, config, title, desc):
     """Transcode the audio file if necessary, then add ID3 tags."""
     # Check that the file exists
-    if not fileUtils.exists(filename):
+    if not os.path.isfile(filename):
         logger.fatal("\'" + filename + "\' does not exist.")
         exit(1)
 
@@ -50,17 +51,36 @@ def process(filename, config, title, desc):
 
 def transcodeAudio(filename):
     """Convert the WAV to an MP3 using Lame."""
-    logging.info("Transcoding to MP3...")
+    logger.info("Transcoding to MP3...")
 
-    # Check if the mp3 already exists
-    fileroot, _ = os.path.splitext(filename)
-    if fileUtils.exists(fileroot + ".mp3"):
-        logger.fatal("\'" + fileroot + ".mp3\' already exists.")
+    # Check if LAME is installed
+    lamePath = fileUtils.which("lame")
+
+    if not lamePath:
+        logger.fatal("LAME could not be found. Please make sure it is in the \
+                     path.")
         exit(1)
+
+    # Check if the mp3 already exists. Using the absolute path so that the
+    # subprocess call can be done with `shell=False` (for added security).
+    fileroot, _ = os.path.splitext(os.path.abspath(filename))
+
+    if fileUtils.os.path.isfile(fileroot + ".mp3"):
+        logger.warning("\'" + fileroot + ".mp3\' already exists.\
+                       Overwriting...")
 
     # Transcode the mp3
     try:
-        cmd = "lame -V2 -h  --quiet %s.wav %s.mp3" % (fileroot, fileroot)
+        # Since subprocess is called with `shell=false`, arguments can not be
+        # passed in a string. Must pass in args as a list.
+        cmd = [lamePath,
+               '-V2',
+               '-h',
+               '--quiet',
+               fileroot + ".wav",
+               fileroot + ".mp3"]
+
+        # Running with shell false for security.
         subprocess.call(cmd, shell=False)
     except:
         raise
@@ -90,13 +110,21 @@ def addID3Tags(filename, config, title, desc):
 
 def addCoverArt(filename, config):
     """Add cover art."""
-    # Create the image tag
     logger.info("Adding the Cover Image...")
+
+    # Check that the file exists
     imageFilepath = config["imageFilepath"]
-    _, imageFileExtension = os.path.splitext(imageFilepath)
+
+    if not os.path.isfile(imageFilepath):
+        logger.fatal("\'" + imageFilepath + "\' does not exist.")
+        exit(1)
+
+    # Initialize the tag
     imageTag = APIC()
 
     # Determine the file type
+    _, imageFileExtension = os.path.splitext(imageFilepath)
+
     if imageFileExtension.lower() == ".png":
         imageTag.mime = 'image/png'
     elif imageFileExtension.lower() == ".jpg":
@@ -109,6 +137,7 @@ def addCoverArt(filename, config):
     imageTag.encoding = 3  # 3 is for utf-8
     imageTag.type = 3      # 3 is for cover image
     imageTag.desc = u'Cover'
+
     with open(imageFilepath, 'rb') as f:
         imageTag.data = f.read()
 

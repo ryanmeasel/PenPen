@@ -7,7 +7,6 @@ import logging
 import os
 import re
 
-import fileUtils
 
 # Configure logger globally
 logging.basicConfig(level=logging.DEBUG)
@@ -94,6 +93,7 @@ def createBackup(config):
 
     # Create the XML backup directory if it doesn't already exist
     backupDir = config["xmlBackupDir"]
+
     try:
         os.makedirs(backupDir)
     except OSError:
@@ -102,6 +102,7 @@ def createBackup(config):
 
     # Create the backup file by copying the XML file into the backup directory
     xmlFilepath = config["xmlFilepath"]
+
     if not os.path.isfile(xmlFilepath):
         logger.fatal("\'" + xmlFilepath + "\' is not a file.")
         exit(1)
@@ -118,9 +119,10 @@ def createBackup(config):
 def parseConfigFile(configFile):
     """Parse the configuration file."""
     # Read in the config file
-    if not fileUtils.exists(configFile):
+    if not os.path.isfile(configFile):
         logger.fatal("\'" + configFile + "\' does not exist.")
         exit(1)
+
     with open(configFile) as f:
         contents = f.readlines()
 
@@ -159,9 +161,11 @@ def containsInvalidTextChars(xmlString):
     This is not intended to validate the XML. It's only meant catch characters
     in the text (i.e., '<' and '&').
     """
+    # Build the regexp containing the illegal characters.
     illegalXmlCharsRE = re.compile("[<&]")
     match = illegalXmlCharsRE.search(xmlString)
+
     if not match:
         return False    # no invalid characters found
     else:
-        return True     # string contains an invalid character
+        return True     # string contains one or more invalid characters
