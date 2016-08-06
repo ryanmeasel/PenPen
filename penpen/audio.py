@@ -43,10 +43,10 @@ def process(filename, config, title, desc):
     # Add and calculate meta data
     addID3Tags(filename, config, title, desc)
     addCoverArt(filename, config)
-    length = calcLength(filename)
+    duration = calcDuration(filename)
 
-    # Return the name of the processed audio file and the length
-    return filename, length
+    # Return the name of the processed audio file and the duration
+    return filename, duration
 
 
 def transcodeAudio(filename):
@@ -57,8 +57,9 @@ def transcodeAudio(filename):
     lamePath = fileUtils.which("lame")
 
     if not lamePath:
-        logger.fatal("LAME could not be found. Please make sure it is in the \
-                     path.")
+        logger.fatal("LAME could not be found. Please make sure it is " +
+                     "installed (brew install lame // apt-get install lame) " +
+                     "and in the current PATH.")
         exit(1)
 
     # Check if the mp3 already exists. Using the absolute path so that the
@@ -66,8 +67,8 @@ def transcodeAudio(filename):
     fileroot, _ = os.path.splitext(os.path.abspath(filename))
 
     if fileUtils.os.path.isfile(fileroot + ".mp3"):
-        logger.warning("\'" + fileroot + ".mp3\' already exists.\
-                       Overwriting...")
+        logger.warning("\'" + fileroot + ".mp3\' already exists. " +
+                       "Overwriting...")
 
     # Transcode the mp3
     try:
@@ -101,10 +102,10 @@ def addID3Tags(filename, config, title, desc):
         metaData.add_tags()
 
     # Set tags
-    metaData["title"] = title
-    metaData["artist"] = unicode(config["artist"])
-    metaData["date"] = unicode(str(datetime.datetime.now().year))
-    metaData["album"] = unicode(config["album"])
+    metaData['title'] = title
+    metaData['artist'] = unicode(config['episodeAuthor'])
+    metaData['date'] = unicode(str(datetime.datetime.now().year))
+    metaData['album'] = unicode(config['feedTitle'])
     metaData.save()
 
 
@@ -113,7 +114,7 @@ def addCoverArt(filename, config):
     logger.info("Adding the Cover Image...")
 
     # Check that the file exists
-    imageFilepath = config["imageFilepath"]
+    imageFilepath = config['episodeImageFilepath']
 
     if not os.path.isfile(imageFilepath):
         logger.fatal("\'" + imageFilepath + "\' does not exist.")
@@ -123,11 +124,9 @@ def addCoverArt(filename, config):
     imageTag = APIC()
 
     # Determine the file type
-    _, imageFileExtension = os.path.splitext(imageFilepath)
-
-    if imageFileExtension.lower() == ".png":
+    if fileUtils.extValid(imageFilepath.lower(), '.png'):
         imageTag.mime = 'image/png'
-    elif imageFileExtension.lower() == ".jpg":
+    elif fileUtils.extValid(imageFilepath.lower(), '.jpg'):
         imageTag.mime = 'image/jpeg'
     else:
         logger.fatal("Cover image must be a PNG or JPG.")
@@ -150,8 +149,8 @@ def addCoverArt(filename, config):
         raise
 
 
-def calcLength(filename):
-    """Calculate the length of the track in hours, mins, and secs."""
+def calcDuration(filename):
+    """Calculate the duration of the track in hours, mins, and secs."""
     try:
         mp3 = MP3(filename)
         hours, rem = divmod(mp3.info.length, 3600)
@@ -159,5 +158,5 @@ def calcLength(filename):
     except:
         raise
 
-    # Return length as a tuple
+    # Return duration as a tuple
     return (hours, mins, secs)
