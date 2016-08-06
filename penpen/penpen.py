@@ -2,7 +2,6 @@
 """Convert, tag, and upload podcast episodes."""
 # to do
 # - config file documentation
-# - copyrights
 
 
 import argparse
