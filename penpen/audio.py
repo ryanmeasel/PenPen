@@ -105,7 +105,7 @@ def addID3Tags(filename, config, title, desc):
     metaData['title'] = title
     metaData['artist'] = unicode(config['episodeAuthor'])
     metaData['date'] = unicode(str(datetime.datetime.now().year))
-    metaData['album'] = unicode(config['feedTitle'])
+    metaData['album'] = unicode(config['rssTitle'])
     metaData.save()
 
 
