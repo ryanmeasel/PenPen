@@ -39,45 +39,49 @@ def generateXml(config, newEpisode):
     oldEpisodes, firstYear = getOldEpisodes(config, rss, chan, namespaces)
 
     # Add feed elements
-    addSubElementFromConfig(chan, 'title', config, 'feedTitle')
+    addSubElementFromConfig(chan, 'title', config, 'rssTitle')
     addSubElementFromConfig(chan, 'link', config, 'websiteLink')
     addSubElementFromConfig(chan, 'language', config, 'language')
-    addSubElementFromConfig(chan, 'itunes:subtitle', config, 'feedSubtitle')
-    addSubElementFromConfig(chan, 'itunes:author', config, 'feedAuthor')
-    addSubElementFromConfig(chan, 'description', config, 'feedDescription')
-    addSubElementFromConfig(chan, 'itunes:summary', config, 'feedDescription')
-    addSubElementFromConfig(chan, 'itunes:explicit', config, 'feedExplicit')
-    addSubElementFromConfig(chan, 'itunes:keywords', config, 'feedKeywords')
+    addSubElementFromConfig(chan, 'itunes:subtitle', config, 'rssSubtitle')
+    addSubElementFromConfig(chan, 'itunes:author', config, 'rssAuthor')
+    addSubElementFromConfig(chan, 'description', config, 'rssDescription')
+    addSubElementFromConfig(chan, 'itunes:summary', config, 'rssDescription')
+    addSubElementFromConfig(chan, 'itunes:explicit', config, 'itunesExplicit')
+    addSubElementFromConfig(chan, 'itunes:keywords', config, 'itunesKeywords')
+    addSubElementFromConfig(chan, 'managingEditor', config, 'managingEditor')
 
     # Copyright
     addSubElement(chan, 'copyright', generateCopyrightStr(config, firstYear))
 
     # Atom link
     xmlFilepath = config['xmlFilepath']
-    feedLink = getLink(config['feedDir'], os.path.basename(xmlFilepath))
+    rssLink = generateLink(config['rssDir'], os.path.basename(xmlFilepath))
     ET.SubElement(chan,
                   'atom:link',
-                  href=feedLink,
+                  href=rssLink,
                   rel="self",
                   type="application/rss+xml")
 
-    # Feed owner
+    # iTunes rss owner
     owner = ET.SubElement(chan, 'itunes:owner')
     name = ET.SubElement(owner, 'itunes:name')
-    name.text = config['ownerName']
+    name.text = config['rssAuthor']
     email = ET.SubElement(owner, 'itunes:email')
-    email.text = config['ownerEmail']
+    email.text = config['managingEditor']
 
-    # Feed image
-    feedImage = config['feedImage']
+    # rss image
+    rssImage = config['rssImage']
 
-    if (fileUtils.extValid(feedImage, '.png') or
-            fileUtils.extValid(feedImage, '.jpg')):
-        ET.SubElement(chan, 'itunes:image', href=config['feedImage'])
+    if (fileUtils.extValid(rssImage, '.png') or
+            fileUtils.extValid(rssImage, '.jpg')):
+        ET.SubElement(chan, 'itunes:image', href=config['rssImage'])
     else:
-        logger.error('Feed image must be a PNG or JPG.')
+        logger.error('RSS image must be a PNG or JPG.')
 
-    # Feed category
+    # Shameless self promotion
+    addSubElement(chan, 'generator', 'PenPen: Audio Podcasting Suite')
+
+    # RSS category
     ET.SubElement(chan, 'itunes:category', text=config['itunesCategory'])
 
     # Last build date
@@ -86,7 +90,7 @@ def generateXml(config, newEpisode):
     # Add the episode
     chan.append(newEpisode)
 
-    # Copy old episodes back into the feed and set RSS attributes
+    # Copy old episodes back into the RSS feed and set the attributes
     if oldEpisodes:
         chan.extend(oldEpisodes)
 
@@ -95,8 +99,8 @@ def generateXml(config, newEpisode):
 
 
 def addEpisode(config, title, desc, mp3File, duration):
-    """Add an episode into the RSS feed."""
-    logger.info("Adding episode to the RSS Feed...")
+    """Add an episode to the RSS feed."""
+    logger.info("Adding episode to the RSS feed...")
 
     # Create the item for the new episode
     item = ET.Element('item')
@@ -109,6 +113,7 @@ def addEpisode(config, title, desc, mp3File, duration):
 
     # Add the remaining sub elements
     addSubElement(item, 'title', title)
+    addSubElement(item, 'description', desc)
     addSubElement(item, 'itunes:summary', desc)
     addSubElement(item, 'pubDate', getFormattedUtcTime())
 
@@ -121,7 +126,7 @@ def addEpisode(config, title, desc, mp3File, duration):
     if not episodeDir.endswith('/'):
         episodeDir += "/"
 
-    episodeLink = getLink(config['episodeDir'], os.path.basename(mp3File))
+    episodeLink = generateLink(config['episodeDir'], os.path.basename(mp3File))
 
     addSubElement(item, 'guid', episodeLink)
 
@@ -137,7 +142,7 @@ def addEpisode(config, title, desc, mp3File, duration):
 
 
 def getOldEpisodes(config, rss, chan, namespaces):
-    """Copy old episodes into the new feed and set RSS attributes."""
+    """Copy old episodes into the new RSS feed and set the attributes."""
     # Indicates items are to be added. Needed to know whether or not to
     # manually add namespaces. Yes, it is wonky. A side effect of the way
     # ElementTree adds namespaces.
@@ -242,7 +247,7 @@ def writeXmlFile(config, rss):
 def createBackup(config):
     """Create a backup of the XML file.
 
-    Return the locatin of the backup file so that we can restore it upon
+    Return the location of the backup file so that we can restore it upon
     a write failure.
     """
     xmlFilepath = config['xmlFilepath']
@@ -250,7 +255,7 @@ def createBackup(config):
     # Only make a backup if an XML already exists
     if os.path.isfile(xmlFilepath):
         # Create the XML backup directory if it doesn't already exist
-        backupDir = config["xmlBackupDir"]
+        backupDir = config["rssBackupDir"]
 
         try:
             os.makedirs(backupDir)
@@ -290,22 +295,22 @@ def prettifyXml(elem):
 
 
 def addSubElement(element, tag, value):
-    """Add a subelement to an element."""
+    """Add a subelement to the ElementTree."""
     child = ET.SubElement(element, tag)
     child.text = value
 
 
 def addSubElementFromConfig(element, tag, config, key):
-    """Add a subelement to the episode with a value from the config file."""
+    """Add a subelement to the ElementTree with a value from the conf file."""
     value = config[key]
 
     if value:
         addSubElement(element, tag, value)
     else:
-        logger.warning("Key \'" + key + "\' was not found in the config file.")
+        logger.warning("Key \'" + key + "\' was not found in the conf file.")
 
 
-def getLink(folder, filename):
+def generateLink(folder, filename):
     """Generate a web link from a folder and a filename."""
     if not folder.endswith('/'):
         folder += "/"
@@ -314,21 +319,23 @@ def getLink(folder, filename):
 
 
 def generateCopyrightStr(config, firstYear):
-    """Generate the copyright string based on the earliest episode year."""
+    """Generate a copyright notice with the year of the earliest episode."""
     copyrightStr = ""
     thisYear = str(datetime.date.today().year)
 
     if not firstYear or firstYear == thisYear:
         copyrightStr = "©" + thisYear + " " + \
-                       config['feedAuthor'] + ". All rights reserved."
+                       config['rssAuthor'] + ". All rights reserved."
     else:
         copyrightStr = "©" + firstYear + "—" + thisYear + " " + \
-                       config['feedAuthor'] + ". All rights reserved."
+                       config['rssAuthor'] + ". All rights reserved."
 
     return unicode(copyrightStr, 'utf-8')
 
 
 def getFormattedUtcTime():
     """Get the current time in UTC formatted to the XML specification."""
+    # Formatting must conform to RFC 822 (Section 5.1). Notably, UTC is
+    # abbreviated UT, because the world has not suffered enough.
     timeStr = datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S")
-    return timeStr + " UTC"
+    return timeStr + " UT"
