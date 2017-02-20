@@ -1,11 +1,16 @@
 ### PROJECT SPECIFIC ###
+# audo files
 *.mp3
 *.wav
+# generated xml
 *.xml
+# image files
 *.png
 *.jpg
-*.conf
-
+# autoenv file
+.env
+# Installation log
+files.txt
 
 ### OSX ###
 *.DS_Store
