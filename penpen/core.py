@@ -1,17 +1,5 @@
 #!/usr/bin/env python
-"""Convert, tag, and upload podcast episodes."""
-# to do
-# - config file parse needs to handle strings across multiple lines
-# - print a reminder to upload episdoes, files, and images to public dirs
-# - support links in tag values
-# - enforce subtitle 255 character limit
-# - support episode subtitles
-# - allow episode images to be added at runtime
-# - fix up setup.py and enable single version number throughout project
-# - Python 3 support
-# - lame encoding options
-# - Docs
-# - Tests
+"""Encode audio podcast episodes and add them to the RSS feed."""
 
 import argparse
 import logging
