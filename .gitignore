@@ -7,10 +7,10 @@
 # image files
 *.png
 *.jpg
-# configuration files
-*.conf
 # autoenv file
 .env
+# Installation log
+files.txt
 
 ### OSX ###
 *.DS_Store
